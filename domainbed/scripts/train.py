@@ -14,12 +14,17 @@ import PIL
 import torch
 import torchvision
 import torch.utils.data
+import open_clip
 
 from domainbed import datasets
 from domainbed import hparams_registry
 from domainbed import algorithms
 from domainbed.lib import misc
 from domainbed.lib.fast_data_loader import InfiniteDataLoader, FastDataLoader
+
+def transform_imgs_to_embeddings(datasets, model_name, path_to_ViT_model):
+    model, _, preprocess = open_clip.create_model_and_transforms(model_name, pretrained=path_to_ViT_model)
+    pass
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Domain generalization')
@@ -48,6 +53,7 @@ if __name__ == "__main__":
         help="For domain adaptation, % of test to use unlabeled for training.")
     parser.add_argument('--skip_model_save', action='store_true')
     parser.add_argument('--save_model_every_checkpoint', action='store_true')
+    parser.add_argument('--path_to_ViT_model', type=str, default=None)
     args = parser.parse_args()
 
     # If we ever want to implement checkpointing, just persist these values
@@ -143,6 +149,15 @@ if __name__ == "__main__":
     if args.task == "domain_adaptation" and len(uda_splits) == 0:
         raise ValueError("Not enough unlabeled samples for domain adaptation.")
 
+
+    #Here we need to look at whether we have to convert to embeddings.
+    if(args.algorithm.startswith("CLIPS")):
+        #transform all environments into embeddings
+        in_splits=transform_imgs_to_embeddings(in_splits, args.algorithm, args.path_to_ViT_model)
+        uda_splits=transform_imgs_to_embeddings(uda_splits, args.algorithm, args.path_to_ViT_model)
+        out_splits=transform_imgs_to_embeddings(out_splits, args.algorithm, args.path_to_ViT_model)
+
+
     train_loaders = [InfiniteDataLoader(
         dataset=env,
         weights=env_weights,
@@ -163,6 +178,7 @@ if __name__ == "__main__":
         batch_size=64,
         num_workers=dataset.N_WORKERS)
         for env, _ in (in_splits + out_splits + uda_splits)]
+
     eval_weights = [None for _, weights in (in_splits + out_splits + uda_splits)]
     eval_loader_names = ['env{}_in'.format(i)
         for i in range(len(in_splits))]

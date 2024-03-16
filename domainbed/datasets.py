@@ -2,6 +2,7 @@
 
 import os
 import torch
+import open_clip
 from PIL import Image, ImageFile
 from torchvision import transforms
 import torchvision.datasets.folder
@@ -223,6 +224,62 @@ class MultipleEnvironmentImageFolder(MultipleDomainDataset):
 
         self.input_shape = (3, 224, 224,)
         self.num_classes = len(self.datasets[-1].classes)
+
+
+class MultipleEnvironmentImageFolderOpenCLIP(MultipleDomainDataset):
+    def __init__(self, root, test_envs, augment, model_name, path_to_pretrained_model, hparams):
+        super().__init__()
+        environments = [f.name for f in os.scandir(root) if f.is_dir()]
+        environments = sorted(environments)
+
+        #initialize model
+        _, _, preprocess_val = open_clip.create_model_and_transforms(model_name, pretrained=path_to_pretrained_model)
+
+        transform = transforms.Compose([
+            transforms.Resize((224,224))
+        ])
+
+        augment_transform = transforms.Compose([
+            # transforms.Resize((224,224)),
+            transforms.RandomResizedCrop(224, scale=(0.7, 1.0)),
+            transforms.RandomHorizontalFlip(),
+            transforms.ColorJitter(0.3, 0.3, 0.3, 0.3),
+            transforms.RandomGrayscale(),
+        ])
+
+        transform_clip = preprocess_val
+        augment_transform_clip = transforms.Compose([augment_transform,preprocess_val])
+
+        self.datasets = []
+        for i, environment in enumerate(environments):
+
+            if augment and (i not in test_envs):
+                env_transform = augment_transform_clip
+            else:
+                env_transform = transform_clip
+
+            path = os.path.join(root, environment)
+            env_dataset = ImageFolder(path,
+                transform=env_transform)
+
+            self.datasets.append(env_dataset)
+
+        self.input_shape = (3, 224, 224,)
+        self.num_classes = len(self.datasets[-1].classes)
+
+class VLCS_CLIPS(MultipleEnvironmentImageFolderOpenCLIP):
+    CHECKPOINT_FREQ = 300
+    ENVIRONMENTS = ["C", "L", "S", "V"]
+    def __init__(self, root, test_envs, hparams):
+        self.dir = os.path.join(root, "VLCS/")
+        super().__init__(self.dir, test_envs, hparams['data_augmentation'], hparams)
+
+class PACS_CLIPS(MultipleEnvironmentImageFolderOpenCLIP):
+    CHECKPOINT_FREQ = 300
+    ENVIRONMENTS = ["A", "C", "P", "S"]
+    def __init__(self, root, test_envs, hparams):
+        self.dir = os.path.join(root, "PACS/")
+        super().__init__(self.dir, test_envs, hparams['data_augmentation'], hparams)
 
 class VLCS(MultipleEnvironmentImageFolder):
     CHECKPOINT_FREQ = 300
